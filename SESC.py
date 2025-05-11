@@ -23,7 +23,7 @@ def should_skip_tile(gaussian, tile_x, tile_y, alpha_thresh=1e-4):
                        gaussian['Cov_inv'][1,1]*dy*dy)
         alpha = math.exp(expo) if expo > -50 else 0.0
         corner_alphas.append(alpha * gaussian['intensity'])
-    if max(corner_alphas) < alpha_thresh:
+    if max(corner_alphas) < alpha_thresh:    #alpha threshold 값 설정근거: 인지적으로 무시 가능한 기준(ChatGPT)
         return True   # all corners have negligible alpha
     
     # 2. Position unit: check distance of tile from Gaussian center
