@@ -1,3 +1,7 @@
+from SESC import analayze_gaussian_shape
+from gaussian_reuse_cache import Gaussiancache
+
+
 # Prepare scene Gaussians (from EDINA data)
 gaussians = load_scene_gaussians(EDINA_frame0)
 for g in gaussians:
