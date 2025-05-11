@@ -1,3 +1,7 @@
+import math
+import numpy as np
+from collections import namedtuple
+
 class GaussianCache:
     def __init__(self, num_sets=1024, ways=8):
         self.num_sets = num_sets
@@ -65,3 +69,44 @@ class GaussianCache:
             self.set_entries[set_idx][way] = gaussian_id
         self._update_plru(set_idx, way)
         return False
+
+
+
+# 타일 정보를 담을 간단한 구조체
+Tile = namedtuple("Tile", ["x", "y"])
+
+def interleave_bits(v: int) -> int:
+    """비트 단위로 interleave(e.g. Morton code 생성 보조)"""
+    v = (v | (v << 8)) & 0x00FF00FF
+    v = (v | (v << 4)) & 0x0F0F0F0F
+    v = (v | (v << 2)) & 0x33333333
+    v = (v | (v << 1)) & 0x55555555
+    return v
+
+def morton_code(x: int, y: int) -> int:
+    """(x,y) 좌표의 Morton 순서 인덱스 반환"""
+    return interleave_bits(x) | (interleave_bits(y) << 1)
+
+def traverse_tiles(frame_data: dict,
+                   tile_size: int = 13,
+                   order: str) -> Tile:
+    """
+    frame_data: {"height":H, "width":W}
+    tile_size: 하나의 타일이 차지하는 픽셀 크기 (기본 13)
+    order (str): Traversal order. Valid values are "row" (row-major) and "z" (Z-order / Morton).
+    """
+    H, W = frame_data["height"], frame_data["width"]
+    nx = W // tile_size  # 타일 개수(가로)
+    ny = H // tile_size  # 타일 개수(세로)
+    
+    coords = [(x, y) for y in range(ny) for x in range(nx)]
+    if order == "row":
+        for x, y in coords:
+            yield Tile(x=x, y=y)
+    elif order == "z":
+        # Morton 코드 기반으로 정렬
+        coords.sort(key=lambda p: morton_code(p[0], p[1]))
+        for x, y in coords:
+            yield Tile(x=x, y=y)
+    else:
+        raise ValueError(f"Unknown order: {order}")
