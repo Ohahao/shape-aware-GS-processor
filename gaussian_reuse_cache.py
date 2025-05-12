@@ -51,7 +51,7 @@ class GaussianCache:
     
     def access(self, gaussian_id):
         """Access a Gaussian in the cache. Return True if hit, False if miss (requiring memory fetch)."""
-        set_idx = gaussian_id % self.num_sets
+        set_idx = gaussian_id % self.num_sets   #gaussian_id가 어느 set에 속하는지 확인 
         # Check if gaussian is already in cache (cache hit)
         if gaussian_id in self.set_entries[set_idx]:
             way = self.set_entries[set_idx].index(gaussian_id)
@@ -88,8 +88,8 @@ def morton_code(x: int, y: int) -> int:
     return interleave_bits(x) | (interleave_bits(y) << 1)
 
 def traverse_tiles(frame_data: dict,
-                   tile_size: int = 13,
-                   order: str) -> Tile:
+                   order: str,
+                   tile_size: int = 13) -> Tile:
     """
     frame_data: {"height":H, "width":W}
     tile_size: 하나의 타일이 차지하는 픽셀 크기 (기본 13)

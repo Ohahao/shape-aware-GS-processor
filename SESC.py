@@ -1,3 +1,5 @@
+import math
+import numpy as np
 import numpy.linalg as LA
 
 def analyze_gaussian_shape(gaussian):

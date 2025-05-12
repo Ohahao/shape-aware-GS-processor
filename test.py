@@ -1,12 +1,12 @@
 import time
 import numpy as np
 from collections import defaultdict
-from SESC import analayze_gaussian_shape, should_skip_tile
-from gaussian_reuse_cache import Gaussiancache, traverse_tiles
+from SESC import analyze_gaussian_shape, should_skip_tile
+from gaussian_reuse_cache import GaussianCache, traverse_tiles
 from hybrid_array import compute_tile_contrib
 from preprocessing import preprocess_from_model
-from gaussian-splatting.scene import Scene, GaussianModel
-from gaussian-splatting.scene.dataset_readers import sceneLoadTypeCallbacks, SceneInfo
+from gaussian_splatting.scene import Scene, GaussianModel
+from gaussian_splatting.scene.dataset_readers import sceneLoadTypeCallbacks, SceneInfo
 
 # ———— 기존 구현 모듈 불러오기 ————
 # compute_tile_contrib, analyze_gaussian_shape, should_skip_tile, GaussianCache
@@ -86,19 +86,19 @@ def load_dataset(
         scene_info = loader(
             path=path,
             images=images,
-            #depths=depths, depth 정보 있는 데이터셋 사용할 경우에 추가
+            depths=depths, 
             eval=eval,
             train_test_exp=train_test_exp,
             llffhold=llffhold
         )
-    elif key in ("blender", "nerf", "synthetic"):
+    elif key in ("blender"):
         loader = sceneLoadTypeCallbacks.get("Blender")
         if loader is None:
             raise ValueError("Blender loader not available.")
         scene_info = loader(
             path=path,
             white_background=white_background,
-            #depths=depths, depth 정보 있는 데이터셋 사용할 경우에 추가
+            depths=depths, 
             eval=eval,
             extension=extension
         )
@@ -106,6 +106,45 @@ def load_dataset(
         raise ValueError(f"Unknown format_type '{format_type}': choose 'colmap' or 'blender'.")
 
     return scene_info
+
+def gaussians_in_tile(tile, gaussians, tile_size=13):
+    """
+    현재 타일(tile)이 영향을 받을 가능성이 있는 Gaussians만 필터링하여
+    (gaussian_index, gaussian_dict) 튜플의 리스트로 반환합니다.
+
+    Args:
+        tile: namedtuple("Tile", ["x", "y"]) 형태로, 타일의 가로(x)·세로(y) 인덱스입니다.
+        gaussians: 각 원소가 {
+            "center": (cx, cy),        # 2D 투영된 Gaussian 센터
+            "max_radius": float,       # shape 분석으로 얻은 최대 반지름 (σ_max)
+            …                          # 기타 필드 (Cov, intensity 등)
+        } 형태인 리스트입니다.
+        tile_size: 하나의 타일이 차지하는 픽셀 너비 (기본 13)
+
+    Returns:
+        List[(int, dict)]: 타일에 기여할 수 있는 Gaussian의 (원본 인덱스, 딕셔너리) 리스트
+    """
+    x0 = tile.x * tile_size
+    x1 = x0 + tile_size
+    y0 = tile.y * tile_size
+    y1 = y0 + tile_size
+
+    visible = []
+    for  g in gaussians:
+        cx, cy = g["center"]
+        # 3σ 영역을 영향 범위로 가정
+        influence_radius = 3.0 * g["max_radius"]
+
+        # 타일 범위 [x0, x1)×[y0, y1)와 원형(중심(cx,cy), 반지름) 간의 겹침 검사
+        if (cx + influence_radius < x0) or (cx - influence_radius >= x1) or \
+           (cy + influence_radius < y0) or (cy - influence_radius >= y1):
+            # 완전히 떨어져 있으면 스킵
+            continue
+
+        # 겹침이 있다면 이 Gaussian은 이 타일에 기여할 수 있음
+        visible.append((g["id"], g))
+
+    return visible
 
 
 if __name__ == "__main__":
@@ -150,8 +189,6 @@ if __name__ == "__main__":
         # 4) 프레임 단위 렌더링
         start_all = time.time()
         for frame_idx, frame_data in enumerate(frames):
-            # (옵션) 카메라/gaussian 업데이트
-            update_gaussian_positions(gaussians, frame_data)    # gaussian 위치 업데이트
             
             H, W = frame_data["height"], frame_data["width"]
             image = np.zeros((H, W), dtype=np.float32)

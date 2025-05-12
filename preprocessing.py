@@ -42,6 +42,7 @@ def preprocess_from_model(model: GaussianModel,
     """
     GaussianModel 인스턴스에서 직접 가져온 파라미터로 전처리.
     Returns: list of dict with keys:
+      - id       : int (global ID)
       - center   : (2,) pixel coords
       - cov2d    : (2,2) projected covariance
       - Cov      : same as cov2d
@@ -82,6 +83,7 @@ def preprocess_from_model(model: GaussianModel,
         max_r = float(np.sqrt(vals[1]))
 
         out.append({
+            "id":           i,      # global ID
             "center":     center2d,
             "cov2d":      cov2d,
             "Cov":        cov2d,
