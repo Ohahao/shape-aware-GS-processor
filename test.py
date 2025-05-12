@@ -91,6 +91,8 @@ def load_dataset(
             train_test_exp=train_test_exp,
             llffhold=llffhold
         )
+
+
     elif key in ("blender"):
         loader = sceneLoadTypeCallbacks.get("Blender")
         if loader is None:
@@ -146,6 +148,41 @@ def gaussians_in_tile(tile, gaussians, tile_size=13):
 
     return visible
 
+def compute_intrinsics(dataset_name):
+    """
+    Compute camera intrinsics based on the dataset.
+
+    Parameters:
+        dataset_name (str): The name of the dataset (e.g., "synthetic", "EDINA").
+        H (int): The height of the image.
+        W (int): The width of the image.
+
+    Returns:
+        dict: A dictionary containing intrinsics parameters (e.g., focal length, principal point).
+    """
+    if dataset_name == "synthetic":
+        # Example intrinsics for synthetic dataset
+        intrinsics = {
+            "fx": 800.0,
+            "fy": 800.0,
+            "cx": 800/2,
+            "cy": 800/2,
+            "image_size": (800, 800)
+        }
+    elif dataset_name == "Ego":
+        # Example intrinsics for Ego dataset
+        intrinsics = {
+            "fx": 2000.0,
+            "fy": 1000.0,
+            "cx": 2000/2,
+            "cy": 1000/2,
+            "image_size": (2000, 1000)
+        }
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+
+    return intrinsics
+
 
 if __name__ == "__main__":
     # 0) 경로 설정
@@ -154,24 +191,51 @@ if __name__ == "__main__":
 
     # 1) 데이터셋 로딩
     datasets = {
-        "synthetic": load_dataset(path=synthetic_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False),  # 논문에서 사용된 NeRF synthetic scenes
-        "EDINA":    load_dataset(path=edina_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False),  # EDINA egocentric scenes
+        "synthetic": load_dataset(path=synthetic_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False), # 논문에서 사용된 NeRF synthetic scenes
+        "Ego":    load_dataset(path=edina_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False),  # Ego
     }
 
     # 2) 결과 저장용
     results = {}
 
     # 3) 각 데이터셋별로 렌더링 및 메트릭 수집
-    for name, frames in datasets.items():
-        # Gaussian 준비 (첫 프레임 기준), 그리고 SESC를 위한 shape 분석
+    for name, scene_info in datasets.items():
+        pc = scene_info.point_cloud
+        frames = scene_info.test_frames
+        shape_metrics = defaultdict(int)
+        
+        intrinsics = compute_intrinsics(name)  # Compute intrinsics based on dataset name
         sh_degree = 3   #학습은 하지 않기 때문에 sh_degree, optimizer_type은 임의로 지정(사용안함)
         optimizer_type = "default"
+
+        # 3D Gaussian 모델 생성 및 전처리
         gaussians_3d = GaussianModel(sh_degree, optimizer_type)    #3d Gaussian 모델 인스턴스화
         gaussians = preprocess_from_model(gaussians_3d, intrinsics)  # 3D Gaussian 모델을 2D로 전처리/ intrinsics는 카메라 내부 파라미터(dataset에 따라 다름)
 
-        for g in gaussians:
-            analyze_gaussian_shape(g)
-        
+        #H, W 정보 로드(dataset에 따라 다름)
+        if name == "synthetic":
+            H, W = 800, 800
+        elif name == "Ego":
+            H, W = 1920, 1080
+
+        # shape analysis 판단 기준
+        Rmin_avgs = []
+        for g in gaussians_3d:
+            Cov = gaussians_3d.get_covariance().detach().cpu().numpy()  # (N,3,3)   # 3x3 covariance matrix
+            C_x = Cov[:, 0, 0]   # shape (N,)
+            C_y = Cov[:, 1, 1]   # shape (N,)
+            C_z = Cov[:, 2, 2]   # shape (N,)
+
+            Rmin_min = (C_x + C_z) ** -0.5
+            Rmin_max = (C_x * C_z - C_y ** 2) ** -0.25
+
+            Rmin_avg = (Rmin_max + Rmin_min) / 2
+            Rmin_avgs.append(Rmin_avg)
+
+        shape_threshold = float(np.mean(Rmin_avgs))               # 평균값
+        print(f"[{name}] Rmin_avg (shape_threshold) = {shape_threshold:.4f}")
+
+        # Cache 초기화
         cache = GaussianCache(num_sets=1024, ways=8)
         metrics = {
             "psnr":      None,
@@ -190,11 +254,10 @@ if __name__ == "__main__":
         start_all = time.time()
         for frame_idx, frame_data in enumerate(frames):
             
-            H, W = frame_data["height"], frame_data["width"]
             image = np.zeros((H, W), dtype=np.float32)
             
             # 타일 순회 (Z-order traversal 권장)
-            for tile in traverse_tiles(frame_data, order="z"):
+            for tile in traverse_tiles(frame_data):
                 metrics["tiles_total"] += 1
                 
                 for g_id, g in enumerate(gaussians_in_tile(tile, gaussians)):
@@ -211,8 +274,8 @@ if __name__ == "__main__":
                         metrics["cache_misses"] += 1
                         metrics["mem_access"] += 1
                     
-                    # mode 결정 (smooth vs spiky)
-                    mode = "interp" if g["min_radius"] >= shape_threshold else "full"
+                    # shape analysis algo. (smooth vs spiky)
+                    mode = analyze_gaussian_shape(g, shape_threshold)
                     
                     # 타일 기여 계산
                     contrib = compute_tile_contrib(g, tile.x, tile.y, mode=mode)

@@ -77,20 +77,15 @@ def preprocess_from_model(model: GaussianModel,
         sh_coeffs = sh_all[i]  # shape (B,3)
         color = eval_sh(sh_coeffs, view_dir)  # returns (3,) float32
 
-        # 6) shape 분석 (eigenvalues → radii)
-        vals, _ = np.linalg.eigh(cov2d)
-        min_r = float(np.sqrt(vals[0]))
-        max_r = float(np.sqrt(vals[1]))
-
         out.append({
             "id":           i,      # global ID
             "center":     center2d,
             "cov2d":      cov2d,
-            "Cov":        cov2d,
-            "Cov_inv":    np.linalg.inv(cov2d),
+            "Cov":        cov3d,
+            "cov2d_inv":    np.linalg.inv(cov2d),
             "intensity":  float(opacity[i]),
             "color":      color.astype(np.float32),
-            "min_radius": min_r,
-            "max_radius": max_r
+            "min_radius": 0,
+            "max_radius": 0
         })
     return out

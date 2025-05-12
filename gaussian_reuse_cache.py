@@ -88,7 +88,6 @@ def morton_code(x: int, y: int) -> int:
     return interleave_bits(x) | (interleave_bits(y) << 1)
 
 def traverse_tiles(frame_data: dict,
-                   order: str,
                    tile_size: int = 13) -> Tile:
     """
     frame_data: {"height":H, "width":W}
@@ -100,13 +99,7 @@ def traverse_tiles(frame_data: dict,
     ny = H // tile_size  # 타일 개수(세로)
     
     coords = [(x, y) for y in range(ny) for x in range(nx)]
-    if order == "row":
+    coords.sort(key=lambda p: morton_code(p[0], p[1]))
         for x, y in coords:
             yield Tile(x=x, y=y)
-    elif order == "z":
-        # Morton 코드 기반으로 정렬
-        coords.sort(key=lambda p: morton_code(p[0], p[1]))
-        for x, y in coords:
-            yield Tile(x=x, y=y)
-    else:
-        raise ValueError(f"Unknown order: {order}")
+   
