@@ -1,5 +1,7 @@
 import time
 import numpy as np
+import os, re
+import cv2  # OpenCV for image loading
 from collections import defaultdict
 from SESC import analyze_gaussian_shape, should_skip_tile
 from gaussian_reuse_cache import GaussianCache, traverse_tiles
@@ -10,7 +12,7 @@ from gaussian_splatting.scene.dataset_readers import sceneLoadTypeCallbacks, Sce
 
 # ———— 기존 구현 모듈 불러오기 ————
 # compute_tile_contrib, analyze_gaussian_shape, should_skip_tile, GaussianCache
-# load_synthetic_dataset, load_edina_dataset, render_frame_shape_aware, compute_psnr
+# load_synthetic_dataset, load_ego_dataset, render_frame_shape_aware, compute_psnr
 
 
 def compute_psnr(reference, estimate):
@@ -36,7 +38,7 @@ def get_reference_images(dataset_name):
     Retrieve reference images for PSNR computation.
 
     Parameters:
-        dataset_name (str): The name of the dataset (e.g., "synthetic", "EDINA").
+        dataset_name (str): The name of the dataset (e.g., "synthetic", "ego").
 
     Returns:
         list of np.ndarray: A list of reference images.
@@ -44,9 +46,9 @@ def get_reference_images(dataset_name):
     if dataset_name == "synthetic":
         # Load ground-truth images for synthetic dataset
         return load_gt_images()
-    elif dataset_name == "EDINA":
-        # Load reference RGB images for EDINA dataset
-        return load_edina_gt_images()
+    elif dataset_name == "ego":
+        # Load reference RGB images for ego dataset
+        return load_ego_gt_images()
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
@@ -109,6 +111,67 @@ def load_dataset(
 
     return scene_info
 
+
+def load_gt_images(dataset_path, extension=".png"):
+    """
+    Load ground-truth images for the synthetic dataset.
+
+    Parameters:
+        dataset_path (str): Path to the directory containing ground-truth images.
+        extension (str): File extension of the images (default: ".png").
+
+    Returns:
+        list of np.ndarray: A list of ground-truth images as NumPy arrays.
+    """
+    if not os.path.exists(dataset_path):
+        raise FileNotFoundError(f"Dataset path does not exist: {dataset_path}")
+    
+    #input image만 읽기(depth map 제외)
+    match = re.search(r'(\d+)', filename)
+    extract_number =  int(match.group(1)) if match else float('inf')
+    filenames = sorted(
+        [f for f in os.listdir(dataset_path) if f.endswith(extension)],
+        key=extract_number
+    )
+
+    gt_images = []
+    for filename in filenames:
+        if filename.endswith(extension):
+            image_path = os.path.join(dataset_path, filename)
+            image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)  # Load image
+            if image is None:
+                raise ValueError(f"Failed to load image: {image_path}")
+            # Normalize image to range [0, 1] if needed(psnr 계산을 위해)
+            image = image.astype(np.float32) / 255.0
+            gt_images.append(image)
+
+    if not gt_images:
+        raise ValueError(f"No images found in {dataset_path} with extension {extension}")
+
+    return gt_images
+
+def load_ego_gt_images(dataset_path, extension=".png"):
+    gt_images = []
+    txt_file_path = os.path.join(dataset_path, "test.txt")
+    image_dir = os.path.join(dataset_path, "images")
+
+    with open(txt_file_path, "r") as file:
+        lines = file.readlines()
+        for line in lines:
+            filename = line.strip()
+            image_path = os.path.join(image_dir, filename)
+            image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)  # Load image
+            if image is None:
+                raise ValueError(f"Failed to load image: {image_path}")
+            # Normalize image to range [0, 1] if needed(psnr 계산을 위해)
+            image = image.astype(np.float32) / 255.0
+            gt_images.append(image)
+
+    if not gt_images:
+        raise ValueError(f"No images found in {dataset_path} with extension {extension}")
+
+    return gt_images
+
 def gaussians_in_tile(tile, gaussians, tile_size=13):
     """
     현재 타일(tile)이 영향을 받을 가능성이 있는 Gaussians만 필터링하여
@@ -153,7 +216,7 @@ def compute_intrinsics(dataset_name):
     Compute camera intrinsics based on the dataset.
 
     Parameters:
-        dataset_name (str): The name of the dataset (e.g., "synthetic", "EDINA").
+        dataset_name (str): The name of the dataset (e.g., "synthetic", "ego").
         H (int): The height of the image.
         W (int): The width of the image.
 
@@ -169,8 +232,8 @@ def compute_intrinsics(dataset_name):
             "cy": 800/2,
             "image_size": (800, 800)
         }
-    elif dataset_name == "Ego":
-        # Example intrinsics for Ego dataset
+    elif dataset_name == "ego":
+        # Example intrinsics for ego dataset
         intrinsics = {
             "fx": 2000.0,
             "fy": 1000.0,
@@ -186,13 +249,13 @@ def compute_intrinsics(dataset_name):
 
 if __name__ == "__main__":
     # 0) 경로 설정
-    synthetic_dataset_path = "path/to/synthetic_dataset"  # NeRF synthetic scenes
-    edina_dataset_path = "path/to/EDINA_dataset"  # EDINA egocentric scenes
+    synthetic_dataset_path = "nerf_synthetic\chair"  # NeRF synthetic scenes
+    ego_dataset_path = "OmniBlender\archiviz-flat"  # ego egocentric scenes
 
     # 1) 데이터셋 로딩
     datasets = {
         "synthetic": load_dataset(path=synthetic_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False), # 논문에서 사용된 NeRF synthetic scenes
-        "Ego":    load_dataset(path=edina_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False),  # Ego
+        "ego":    load_dataset(path=ego_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False),  # ego
     }
 
     # 2) 결과 저장용
@@ -215,7 +278,7 @@ if __name__ == "__main__":
         #H, W 정보 로드(dataset에 따라 다름)
         if name == "synthetic":
             H, W = 800, 800
-        elif name == "Ego":
+        elif name == "ego":
             H, W = 1920, 1080
 
         # shape analysis 판단 기준
@@ -292,7 +355,7 @@ if __name__ == "__main__":
         metrics["total_time"] = time.time() - start_all
         
         # 5) 품질 평가 (PSNR)
-        ref_images = get_reference_images(name)  
+        ref_images = get_reference_images(name, dataset_path=synthetic_dataset_path if name == "synthetic" else ego_dataset_path)  
         psnrs = [ compute_psnr(ref, est) 
                 for ref, est in zip(ref_images, rendered_images) ]
         metrics["psnr"] = float(np.mean(psnrs))
