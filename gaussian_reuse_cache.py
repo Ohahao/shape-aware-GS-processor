@@ -102,4 +102,7 @@ def traverse_tiles(frame_data: dict,
     coords.sort(key=lambda p: morton_code(p[0], p[1]))
     for x, y in coords:
         yield Tile(x=x, y=y)
+<<<<<<< HEAD
    
+=======
+>>>>>>> 05896b5db248f076bc0557f421ac5b78b15780e7
