@@ -1,6 +1,9 @@
+"""Module providing a function printing """
+
 import time
+import os
+import re
 import numpy as np
-import os, re
 import cv2  # OpenCV for image loading
 from collections import defaultdict
 from SESC import analyze_gaussian_shape, should_skip_tile
@@ -33,24 +36,6 @@ def compute_psnr(reference, estimate):
     psnr = 20 * np.log10(max_pixel / np.sqrt(mse))
     return psnr
 
-def get_reference_images(dataset_name):
-    """
-    Retrieve reference images for PSNR computation.
-
-    Parameters:
-        dataset_name (str): The name of the dataset (e.g., "synthetic", "ego").
-
-    Returns:
-        list of np.ndarray: A list of reference images.
-    """
-    if dataset_name == "synthetic":
-        # Load ground-truth images for synthetic dataset
-        return load_gt_images()
-    elif dataset_name == "ego":
-        # Load reference RGB images for ego dataset
-        return load_ego_gt_images()
-    else:
-        raise ValueError(f"Unknown dataset: {dataset_name}")
 
 def load_dataset(
     path: str,
@@ -59,6 +44,7 @@ def load_dataset(
     depths: str = "",
     eval: bool = False,
     train_test_exp: bool = False,
+    dataset_type: str = "",
     llffhold: int = 8,
     white_background: bool = True,
     extension: str = ".png"
@@ -104,6 +90,7 @@ def load_dataset(
             white_background=white_background,
             depths=depths, 
             eval=eval,
+            dataset_type=dataset_type,
             extension=extension
         )
     else:
@@ -171,6 +158,27 @@ def load_ego_gt_images(dataset_path, extension=".png"):
         raise ValueError(f"No images found in {dataset_path} with extension {extension}")
 
     return gt_images
+
+
+def get_reference_images(dataset_name):
+    """
+    Retrieve reference images for PSNR computation.
+
+    Parameters:
+        dataset_name (str): The name of the dataset (e.g., "synthetic", "ego").
+
+    Returns:
+        list of np.ndarray: A list of reference images.
+    """
+    if dataset_name == "synthetic":
+        # Load ground-truth images for synthetic dataset
+        return load_gt_images()
+    elif dataset_name == "ego":
+        # Load reference RGB images for ego dataset
+        return load_ego_gt_images()
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+
 
 def gaussians_in_tile(tile, gaussians, tile_size=13):
     """
@@ -249,13 +257,13 @@ def compute_intrinsics(dataset_name):
 
 if __name__ == "__main__":
     # 0) 경로 설정
-    synthetic_dataset_path = "nerf_synthetic\chair"  # NeRF synthetic scenes
-    ego_dataset_path = "OmniBlender\archiviz-flat"  # ego egocentric scenes
+    synthetic_dataset_path = "nerf_synthetic/chair"  # NeRF synthetic scenes
+    ego_dataset_path = "OmniBlender/archiviz-flat"  # ego egocentric scenes
 
     # 1) 데이터셋 로딩
     datasets = {
-        "synthetic": load_dataset(path=synthetic_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False), # 논문에서 사용된 NeRF synthetic scenes
-        "ego":    load_dataset(path=ego_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False),  # ego
+        "synthetic": load_dataset(path=synthetic_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False, dataset_type="nerf_synthetic") # 논문에서 사용된 NeRF synthetic scenes
+        #"ego":    load_dataset(path=ego_dataset_path, format_type="Blender", images="images", eval=True, train_test_exp=False, dataset_type="omniblender"),  # ego
     }
 
     # 2) 결과 저장용

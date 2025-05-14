@@ -100,6 +100,6 @@ def traverse_tiles(frame_data: dict,
     
     coords = [(x, y) for y in range(ny) for x in range(nx)]
     coords.sort(key=lambda p: morton_code(p[0], p[1]))
-        for x, y in coords:
-            yield Tile(x=x, y=y)
+    for x, y in coords:
+        yield Tile(x=x, y=y)
    

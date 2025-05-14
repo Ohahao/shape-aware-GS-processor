@@ -81,7 +81,7 @@ def preprocess_from_model(model: GaussianModel,
             "id":           i,      # global ID
             "center":     center2d,
             "cov2d":      cov2d,
-            "Cov":        cov3d,
+            "Cov":        cov3D,
             "cov2d_inv":    np.linalg.inv(cov2d),
             "intensity":  float(opacity[i]),
             "color":      color.astype(np.float32),
@@ -89,3 +89,4 @@ def preprocess_from_model(model: GaussianModel,
             "max_radius": 0
         })
     return out
+
