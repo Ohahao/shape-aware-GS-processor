@@ -2,7 +2,7 @@
 
 This Github is implementing code for following paper ! 
 
-> [1.78mj/frame 373fps 3d gs processor based on shape-aware hybrid architecture using earlier computation skipping and gaussian cache scheduler](https://ieeexplore.ieee.org/document/10904813)
+> **[1.78mj/frame 373fps 3d gs processor based on shape-aware hybrid architecture using earlier computation skipping and gaussian cache scheduler]**(https://ieeexplore.ieee.org/document/10904813)
 
 ### Quick start 
 ``` python
